@@ -1,0 +1,30 @@
+# Python cache and build artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+
+# Virtual environments and local environment files
+.env
+.env.local
+.venv/
+venv/
+env/
+
+# Jupyter and editors
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Runtime logs and local outputs
+*.log
+local_tests/out/
+.omo/

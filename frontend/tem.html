@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en" class="theme-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NC-TEM analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&family=Material+Symbols+Outlined:wght@300;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css?v=fft-profile-y-padding-20260528">
+</head>
+<body class="tem-body">
+  <div class="tem-shell">
+    <div class="tem-frame">
+      <aside class="tem-sidebar">
+        <div class="side-brand">
+          <div class="brand-icon material-symbols-outlined">biotech</div>
+          <div>
+            <h1>NC-TEM analyzer</h1>
+            <p>Measurement workspace</p>
+          </div>
+        </div>
+
+        <div class="side-workspace-card">
+          <button type="button" class="workspace-switch">
+            <span class="workspace-switch-icon material-symbols-outlined">tune</span>
+            <span>
+              <strong>Analyzer</strong>
+              <small>Live measurement desk</small>
+            </span>
+          </button>
+        </div>
+
+        <nav class="side-nav">
+          <a class="active" href="#">
+            <span class="material-symbols-outlined">grid_view</span>
+            Analyze
+          </a>
+          <a href="#previewStage">
+            <span class="material-symbols-outlined">image</span>
+            Preview
+          </a>
+          <a href="#fftPanel">
+            <span class="material-symbols-outlined">analytics</span>
+            FFT
+          </a>
+        </nav>
+
+        <article class="surface-card histogram-card sidebar-histogram-card">
+          <div class="surface-head">
+            <div>
+              <h2>Accumulated Histogram</h2>
+              <p>Accepted measurements are binned live as you work.</p>
+            </div>
+            <div class="histogram-head-actions">
+              <span id="histogramMetricTag" class="surface-tag">Diameter / Count</span>
+              <button id="downloadHistogramPng" type="button" class="btn-ghost compact histogram-png-btn" title="Download transparent histogram PNG" disabled>
+                <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                <span>PNG</span>
+              </button>
+              <div class="histogram-axis-toggle" aria-label="NPL histogram axis">
+                <button type="button" class="active" data-hist-axis="long" aria-pressed="true">Long</button>
+                <button type="button" data-hist-axis="short" aria-pressed="false" disabled>Short</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="histogram-stage">
+            <canvas id="histogramCanvas" role="img" aria-label="Histogram of accumulated NC-TEM measurements"></canvas>
+          </div>
+
+          <div class="histogram-axis-controls" aria-label="Histogram axis controls">
+            <div class="histogram-axis-hint">
+              <strong>Drag X range</strong>
+              <span>CSV export includes all accepted measurements, including both NPL axes.</span>
+            </div>
+            <label class="histogram-bin-control" for="histogramBinSize">
+              <span>Bin size</span>
+              <input id="histogramBinSize" type="number" min="0.0001" step="0.1" inputmode="decimal" placeholder="Auto">
+            </label>
+            <button id="histAxisResetBtn" type="button" class="btn-ghost compact">Reset view</button>
+          </div>
+
+          <p id="histogramSummary" class="histogram-summary">
+            Run analysis to populate the histogram with accepted measurements.
+          </p>
+        </article>
+
+        <article class="surface-card file-search-card sidebar-file-search-card">
+          <label class="search-inline" for="fileSearch">
+            <span class="material-symbols-outlined">search</span>
+            <input id="fileSearch" type="text" placeholder="Search uploaded files">
+            <small>Queue</small>
+          </label>
+        </article>
+
+        <article class="surface-card file-queue-card sidebar-file-queue-card">
+          <div class="surface-head">
+            <div>
+              <h2>Uploaded Files</h2>
+              <p>Choose a file to inspect the overlay.</p>
+            </div>
+            <button id="clearDataBtn" type="button" class="btn-ghost compact">Clear Data</button>
+          </div>
+          <div id="fileList" class="file-list"></div>
+        </article>
+
+        <section class="side-group">
+          <div class="side-group-head">
+            <span>Workspace</span>
+            <button type="button" aria-label="Add workspace item">
+              <span class="material-symbols-outlined">add</span>
+            </button>
+          </div>
+          <div class="side-list">
+            <div class="side-list-item active">
+              <span class="side-list-badge">NC</span>
+              <span>NC-TEM analyzer</span>
+              <small>Live</small>
+            </div>
+            <div class="side-list-item">
+              <span class="side-list-badge">SB</span>
+              <span>Scale Calibration</span>
+              <small>Ready</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="side-metrics-card">
+          <div class="metric-mini">
+            <span>Mode</span>
+            <strong id="sessionModeValue">Spherical</strong>
+          </div>
+          <div class="metric-mini">
+            <span>Queue</span>
+            <strong id="sessionFileCount">0 files</strong>
+          </div>
+          <div class="metric-mini">
+            <span>Saved runs</span>
+            <strong id="resultStateValue">No runs yet</strong>
+          </div>
+        </section>
+
+      </aside>
+
+      <main class="tem-main">
+        <header class="tem-page-head">
+          <div>
+            <h1>NC-TEM analyzer</h1>
+            <p>Upload TEM images, tune thresholds, preview overlays, and keep cumulative measurement history in one workspace.</p>
+          </div>
+
+          <div class="tem-head-actions">
+            <button id="downloadCsv" type="button" class="btn-secondary compact">
+              <span class="step-dot" aria-hidden="true">5</span>
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="tem-mode-strip">
+          <div class="mode-tabs" role="tablist" aria-label="Detection modes">
+            <button type="button" class="mode-tab active" data-shape-tab="spherical" aria-pressed="true">
+              <span>Spherical Dot</span>
+              <small>Round particle workflow</small>
+            </button>
+            <button type="button" class="mode-tab" data-shape-tab="platelet" aria-pressed="false">
+              <span>Nanoplatelet / Rod</span>
+              <small>Shape-aware rectangular workflow</small>
+            </button>
+          </div>
+
+          <div class="mode-status">
+            <div class="mode-status-pill">
+              <span>System</span>
+              <strong><i></i>Local</strong>
+            </div>
+            <div class="mode-status-pill">
+              <span>Accepted</span>
+              <strong id="acceptedCountBadge">0</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="workflow-rail" aria-label="Workflow overview">
+          <div class="workflow-step active" data-workflow-step="upload">
+            <span>1</span>
+            <strong>Input</strong>
+            <small id="workflowQueueLabel">0 files</small>
+          </div>
+          <div class="workflow-step" data-workflow-step="setup">
+            <span>2</span>
+            <strong>Run Setup</strong>
+            <small id="workflowModeLabel">Spherical Dot</small>
+          </div>
+          <div class="workflow-step" data-workflow-step="detect">
+            <span>3</span>
+            <strong>Run Auto-Detect</strong>
+            <small id="workflowDetectLabel">After setup</small>
+          </div>
+          <div class="workflow-step" data-workflow-step="correct">
+            <span>4</span>
+            <strong>Correct</strong>
+            <small id="workflowCorrectLabel">Overlay</small>
+          </div>
+          <div class="workflow-step" data-workflow-step="export">
+            <span>5</span>
+            <strong>Export CSV</strong>
+            <small id="workflowExportLabel">Ready</small>
+          </div>
+        </section>
+
+        <form id="analyzeForm" class="analysis-layout">
+          <input id="rectangleSeedPointsInput" type="hidden" name="rectangle_seed_points" value="">
+          <section class="queue-column">
+            <article class="surface-card upload-card">
+              <div class="surface-head">
+                <div>
+                  <h2>Input Queue</h2>
+                  <p>Select image files first, then tune setup for the batch.</p>
+                </div>
+                <span class="flow-badge">
+                  <span class="step-dot" aria-hidden="true">1</span>
+                  <span>Input</span>
+                </span>
+              </div>
+
+              <label class="field upload-field" for="images">
+                <span class="field-label">Images</span>
+                <span class="field-help">Supported formats: png, jpg, jpeg, tif, tiff</span>
+                <input id="images" name="images" type="file" multiple required>
+              </label>
+
+              <p class="note-inline">Selected files stay in this browser session: analyze, inspect overlays, then export accumulated results.</p>
+            </article>
+
+            <article class="surface-card setup-card">
+              <div class="surface-head">
+                <div>
+                  <h2>Run Setup</h2>
+                  <p>Adjust measurement mode and scale after choosing input files.</p>
+                </div>
+                <span class="flow-badge">
+                  <span class="step-dot" aria-hidden="true">2</span>
+                  <span>Setup</span>
+                </span>
+              </div>
+
+              <div class="field-grid setup-grid">
+                <label class="field">
+                  <span class="field-label">Shape mode</span>
+                  <span class="field-help">Choose spherical dots or rectangular NPL/rod measurement.</span>
+                  <select id="targetShape" name="target_shape">
+                    <option value="spherical" selected>Spherical dot</option>
+                    <option value="platelet">Nanoplatelet / Rod</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span class="field-label">Scale bar length (nm)</span>
+                  <span class="field-help">Enter the real scale length shown in the image.</span>
+                  <input id="knownNmInput" type="number" step="0.1" name="known_nm" value="100.0">
+                </label>
+
+                <label class="field">
+                  <span class="field-label">Scale bar color</span>
+                  <span class="field-help">Match the visible scale bar color.</span>
+                  <select name="sb_color">
+                    <option value="white" selected>white</option>
+                    <option value="black">black</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="upload-actions setup-actions">
+                <button id="submitBtn" type="submit" class="btn-primary run-btn" data-submit-analysis data-step="3">
+                  <span class="step-dot" aria-hidden="true">3</span>
+                  <span>Run Auto-Detect</span>
+                </button>
+              </div>
+            </article>
+
+            <article class="surface-card result-card hidden" id="resultPanel">
+              <div class="surface-head">
+                <div>
+                  <h2>Results Table</h2>
+                  <p>Accumulated measurements stay here until you clear the session.</p>
+                </div>
+                <div class="result-head-actions">
+                  <span class="flow-badge">
+                    <span class="step-dot" aria-hidden="true">5</span>
+                    <span>Export CSV</span>
+                  </span>
+                  <span class="surface-tag">Live history</span>
+                  <button id="refreshHistoryBtn" type="button" class="btn-ghost compact">Refresh</button>
+                </div>
+              </div>
+              <p id="totalCount" class="result-summary"></p>
+              <div class="tableWrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Count</th>
+                      <th>Mean L (nm)</th>
+                      <th>Std L (nm)</th>
+                      <th>Mean S (nm)</th>
+                      <th>Std S (nm)</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="resultRows"></tbody>
+                </table>
+              </div>
+              <p id="errorMessage" class="error"></p>
+            </article>
+          </section>
+
+          <section class="workbench-column">
+            <article class="surface-card preview-card" id="previewStage">
+              <div class="preview-card-head">
+                <div>
+                  <p class="eyebrow">Live Preview</p>
+                  <h2 id="previewTitle">No image selected</h2>
+                </div>
+                <div class="preview-card-meta">
+                  <span class="flow-badge">
+                    <span class="step-dot" aria-hidden="true">4</span>
+                    <span>Correct</span>
+                  </span>
+                  <span class="meta-pill" id="modeBadge">Spherical</span>
+                  <span class="meta-pill" id="scaleBadge">100.0 nm scale</span>
+                </div>
+              </div>
+
+              <div class="preview-workspace">
+                <div class="preview-main">
+                  <div class="viewer-stage">
+                    <div class="viewer-grid-overlay"></div>
+                    <canvas id="previewCanvas"></canvas>
+
+                    <div class="viewer-overlay top-left">
+                      <button type="button" class="layer-btn active" data-preview-layer="overlay">Overlay</button>
+                      <button type="button" class="layer-btn" data-preview-layer="original">Original</button>
+                      <button id="zoomOutBtn" type="button" class="layer-btn" aria-label="Zoom out">-</button>
+                      <button id="zoomResetBtn" type="button" class="layer-btn" aria-label="Reset zoom">100%</button>
+                      <button id="zoomInBtn" type="button" class="layer-btn" aria-label="Zoom in">+</button>
+                    </div>
+
+                    <div class="viewer-overlay top-right calibrated">
+                      <i></i>
+                      <span id="previewStatusLabel">Ready</span>
+                    </div>
+
+                    <div class="viewer-overlay bottom-right controls">
+                      <span class="material-symbols-outlined">straighten</span>
+                      <b id="modeCompact">Spherical</b>
+                    </div>
+                  </div>
+
+                  <p class="preview-hint" id="previewHint">Select image files to preview. After analysis, detected objects are drawn in red.</p>
+                </div>
+
+                <aside class="preview-side-panel">
+                  <div class="side-threshold-panel">
+                    <div class="side-tool-head">
+                      <span class="surface-tag">Scan range</span>
+                      <strong>Detection limits</strong>
+                    </div>
+                    <div id="sphericalThresholds" class="side-threshold-fields">
+                      <label class="field">min_nm
+                        <input type="number" step="0.1" name="min_nm" value="5.0">
+                      </label>
+                      <label class="field">max_nm
+                        <input type="number" step="0.1" name="max_nm" value="15.0">
+                      </label>
+                    </div>
+                    <div id="plateletThresholds" class="side-threshold-fields hidden">
+                      <label class="field">min_length_nm
+                        <input type="number" step="0.1" name="platelet_min_length_nm" value="3.0">
+                      </label>
+                      <label class="field">max_length_nm
+                        <input type="number" step="0.1" name="platelet_max_length_nm" value="15.0">
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="dot-edit-panel preview-correction-panel">
+                    <div>
+                      <span class="surface-tag" id="overlayToolTag">Dot correction</span>
+                      <strong id="selectedDotLabel">No dot selected</strong>
+                    </div>
+                    <div class="dot-edit-actions">
+                      <button id="radiusMinusBtn" type="button" class="btn-ghost compact" disabled>-1 px</button>
+                      <button id="radiusPlusBtn" type="button" class="btn-secondary compact" disabled>+1 px</button>
+                      <button id="centerLeftBtn" type="button" class="btn-ghost compact" disabled>Left</button>
+                      <button id="centerRightBtn" type="button" class="btn-ghost compact" disabled>Right</button>
+                      <button id="centerUpBtn" type="button" class="btn-ghost compact" disabled>Up</button>
+                      <button id="centerDownBtn" type="button" class="btn-ghost compact" disabled>Down</button>
+                      <button id="toggleSelectedDotBtn" type="button" class="btn-ghost compact" disabled>Exclude</button>
+                      <button id="saveVerifiedSampleBtn" type="button" class="btn-primary compact" disabled>Save Verified Sample</button>
+                    </div>
+                    <div class="rectangle-seed-actions hidden" id="rectangleSeedPanel">
+                      <button id="startRectangleSeedBtn" type="button" class="btn-secondary compact">Pick 4 corners</button>
+                      <button id="resetRectangleSeedBtn" type="button" class="btn-ghost compact" disabled>Reset seed</button>
+                      <span id="rectangleSeedStatus">No rectangle seed</span>
+                    </div>
+                    <small id="verifiedSampleCount">0 verified</small>
+                  </div>
+
+                </aside>
+              </div>
+            </article>
+
+            <article class="surface-card settings-card">
+              <div class="surface-head">
+                <div>
+                  <h2>Detection Settings</h2>
+                  <p>Use goal-based tuning first; advanced values stay editable below.</p>
+                </div>
+                <span class="surface-tag">Guided</span>
+              </div>
+
+              <button type="submit" class="btn-primary run-btn settings-run-btn" data-submit-analysis data-step="3">
+                <span class="step-dot" aria-hidden="true">3</span>
+                <span>Run Auto-Detect</span>
+              </button>
+
+              <div class="tuning-panel">
+                <label class="field">
+                  <span class="field-label">Boundary fit</span>
+                  <select id="boundaryFitPreset">
+                    <option value="balanced" selected>Balanced</option>
+                    <option value="conservative">Conservative</option>
+                    <option value="expanded">Expanded</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Image contrast</span>
+                  <select id="contrastPreset">
+                    <option value="normal" selected>Normal</option>
+                    <option value="soft">Soft</option>
+                    <option value="strong">Strong</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Noise cleanup</span>
+                  <select id="noiseCleanupPreset">
+                    <option value="normal" selected>Normal</option>
+                    <option value="low">Low</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Shape strictness</span>
+                  <select id="shapeStrictnessPreset">
+                    <option value="normal" selected>Normal</option>
+                    <option value="loose">Loose</option>
+                    <option value="strict">Strict</option>
+                  </select>
+                </label>
+              </div>
+
+              <button id="advancedSettingsToggle" class="advanced-toggle" type="button" aria-expanded="false" aria-controls="advancedSettingsBody">
+                <span class="advanced-toggle-icon" aria-hidden="true">&#9650;</span>
+                <span>Detailed numeric settings</span>
+              </button>
+
+              <div id="advancedSettingsBody" class="advanced-settings-body hidden">
+                <div id="sphericalDetectionSettings" class="field-grid field-grid-3">
+                <label class="field">crop_bottom_px
+                  <span class="field-help">Fallback bottom crop used only when a scale bar is not detected.</span>
+                  <input type="number" step="1" name="crop_bottom_px" value="150">
+                </label>
+                <label class="field">gamma
+                  <span class="field-help">Higher makes the preprocessed image darker; lower makes it brighter.</span>
+                  <input type="number" step="0.01" name="gamma" value="0.7">
+                </label>
+                <label class="field">gauss_sigma
+                  <span class="field-help">Higher applies stronger blur; lower keeps sharper edges.</span>
+                  <input type="number" step="0.01" name="gauss_sigma" value="0.3">
+                </label>
+                <label class="field">adapthist_clip
+                  <span class="field-help">Higher increases local contrast but can amplify noise.</span>
+                  <input type="number" step="0.01" name="adapthist_clip" value="0.1">
+                </label>
+                <label class="field">adapthist_tile_y
+                  <span class="field-help">Higher uses finer vertical tiles for local contrast calculation.</span>
+                  <input type="number" step="1" name="adapthist_tile_y" value="6">
+                </label>
+                <label class="field">adapthist_tile_x
+                  <span class="field-help">Higher uses finer horizontal tiles for local contrast calculation.</span>
+                  <input type="number" step="1" name="adapthist_tile_x" value="6">
+                </label>
+                <label class="field">boundary_expand_px
+                  <span class="field-help">Expands each detected dot radius after thresholding. Use this when the red circle sits inside the real particle boundary.</span>
+                  <input type="number" step="0.5" min="0" name="boundary_expand_px" value="0">
+                </label>
+                <label class="field">dot_min_area_px
+                  <span class="field-help">Removes tiny connected regions before measuring dots. Higher values clean noise more aggressively.</span>
+                  <input type="number" step="1" min="1" name="dot_min_area_px" value="30">
+                </label>
+              </div>
+
+              <div id="plateletDetectionSettings" class="field-grid field-grid-3 hidden">
+                <label class="field">crop_bottom_px
+                  <span class="field-help">Fallback bottom crop used only when a scale bar is not detected.</span>
+                  <input type="number" step="1" name="platelet_crop_bottom_px" value="150">
+                </label>
+                <label class="field">gamma
+                  <span class="field-help">Higher makes the preprocessed image darker; lower makes it brighter.</span>
+                  <input type="number" step="0.01" name="platelet_gamma" value="0.08">
+                </label>
+                <label class="field">gauss_sigma
+                  <span class="field-help">Higher applies stronger blur; lower keeps sharper edges.</span>
+                  <input type="number" step="0.01" name="platelet_gauss_sigma" value="0.45">
+                </label>
+                <label class="field">adapthist_clip
+                  <span class="field-help">Higher increases local contrast but can amplify noise.</span>
+                  <input type="number" step="0.01" name="platelet_adapthist_clip" value="0.02">
+                </label>
+                <label class="field">adapthist_tile_y
+                  <span class="field-help">Higher uses finer vertical tiles for local contrast calculation.</span>
+                  <input type="number" step="1" name="platelet_adapthist_tile_y" value="4">
+                </label>
+                <label class="field">adapthist_tile_x
+                  <span class="field-help">Higher uses finer horizontal tiles for local contrast calculation.</span>
+                  <input type="number" step="1" name="platelet_adapthist_tile_x" value="4">
+                </label>
+              </div>
+
+
+
+              <div class="settings-divider">
+                <span>Shape filtering</span>
+              </div>
+
+              <div id="sphericalAcceptanceSettings" class="field-grid field-grid-2">
+                <label class="field">ecc_max
+                  <span class="field-help">Lower keeps circular particles only; higher allows more elongated shapes.</span>
+                  <input type="number" step="0.01" name="ecc_max" value="0.95">
+                </label>
+                <label class="field">sol_min
+                  <span class="field-help">Higher keeps cleaner shapes; lower allows more irregular candidates.</span>
+                  <input type="number" step="0.01" name="sol_min" value="0.35">
+                </label>
+              </div>
+
+              <div id="plateletAcceptanceSettings" class="field-grid field-grid-2 hidden">
+                <label class="field">platelet_aspect_min
+                  <span class="field-help">Higher keeps more elongated rods; lower includes blunter rectangles.</span>
+                  <input type="number" step="0.1" name="platelet_aspect_min" value="1.8">
+                </label>
+                <label class="field">platelet_ecc_min
+                  <span class="field-help">Higher favors stronger anisotropy; lower includes blunter shapes.</span>
+                  <input type="number" step="0.01" name="platelet_ecc_min" value="0.65">
+                </label>
+                <label class="field">platelet_extent_min
+                  <span class="field-help">Higher keeps candidates that fill their box more like rectangles.</span>
+                  <input type="number" step="0.01" name="platelet_extent_min" value="0.35">
+                </label>
+                <label class="field">platelet_sol_min
+                  <span class="field-help">Higher removes fragmented or noisy candidates more aggressively.</span>
+                  <input type="number" step="0.01" name="platelet_sol_min" value="0.35">
+                </label>
+                <label class="field">platelet_min_area_px
+                  <span class="field-help">Higher removes tiny candidates before splitting; lower keeps more small candidates.</span>
+                  <input type="number" step="1" name="platelet_min_area_px" value="35">
+                </label>
+                <label class="field">platelet_split_min_distance_px
+                  <span class="field-help">Lower splits attached rods more aggressively; higher splits less.</span>
+                  <input type="number" step="1" name="platelet_split_min_distance_px" value="5">
+                </label>
+              </div>
+              </div>
+            </article>
+
+            <article class="surface-card fft-card" id="fftPanel">
+              <div class="surface-head">
+                <div>
+                  <h2>FFT ROI</h2>
+                  <p>Draw one lattice ROI, run FFT, then adjust the peak pair if needed.</p>
+                </div>
+                <span class="surface-tag" id="fftSavedCount">0 FFT saved</span>
+              </div>
+
+              <div class="fft-actions">
+                <button id="startFftRoiBtn" type="button" class="btn-secondary compact" disabled>Pick FFT ROI</button>
+                <button id="runFftBtn" type="button" class="btn-primary compact" disabled>Run FFT</button>
+                <button id="resetFftBtn" type="button" class="btn-ghost compact" disabled>Reset ROI</button>
+                <button id="saveFftResultBtn" type="button" class="btn-secondary compact" disabled>Save FFT Result</button>
+                <button id="exportFftCsvBtn" type="button" class="btn-ghost compact fft-export-btn" disabled>Export FFT CSV</button>
+              </div>
+
+              <div class="fft-workspace">
+                <div class="fft-view-block">
+                  <div class="fft-view-head">
+                    <strong>FFT magnitude</strong>
+                    <span><i class="legend-dot auto"></i>Auto pair <i class="legend-dot manual"></i>Manual pair</span>
+                  </div>
+                  <div class="fft-canvas-shell">
+                    <canvas id="fftCanvas" width="320" height="220" aria-label="FFT magnitude preview"></canvas>
+                  </div>
+                  <div class="fft-overlay-note" aria-label="FFT overlay legend">
+                    <span><i class="legend-dot detected"></i>White dots: detected spots</span>
+                    <span><i class="legend-dot auto"></i>Blue: auto suggestion</span>
+                    <span><i class="legend-dot manual"></i>Green: verified pair</span>
+                  </div>
+                  <div class="fft-settings-panel fft-display-controls" aria-label="FFT display brightness and contrast controls">
+                    <div class="fft-settings-head">
+                      <strong>FFT display</strong>
+                      <span>Magnitude preview</span>
+                    </div>
+                    <label>
+                      <span>Minimum <b id="fftDisplayMinValue">0</b></span>
+                      <input id="fftDisplayMin" type="range" min="0" max="254" step="1" value="0">
+                    </label>
+                    <label>
+                      <span>Maximum <b id="fftDisplayMaxValue">255</b></span>
+                      <input id="fftDisplayMax" type="range" min="1" max="255" step="1" value="255">
+                    </label>
+                    <label>
+                      <span>Brightness <b id="fftDisplayBrightnessValue">0</b></span>
+                      <input id="fftDisplayBrightness" type="range" min="-100" max="100" step="1" value="0">
+                    </label>
+                    <label>
+                      <span>Contrast <b id="fftDisplayContrastValue">100%</b></span>
+                      <input id="fftDisplayContrast" type="range" min="20" max="300" step="1" value="100">
+                    </label>
+                    <div class="fft-display-actions">
+                      <button id="fftDisplayAutoBtn" type="button" class="btn-ghost compact">Auto</button>
+                      <button id="fftDisplayResetBtn" type="button" class="btn-ghost compact">Reset</button>
+                      <button id="fftDisplayApplyBtn" type="button" class="btn-secondary compact">Apply</button>
+                    </div>
+                    <label class="fft-toggle-row">
+                      <span>Show FFT overlay</span>
+                      <input id="fftOverlayToggle" type="checkbox" checked>
+                    </label>
+                  </div>
+                </div>
+                <div class="fft-view-block">
+                  <div class="fft-view-head">
+                    <strong>Inverse FFT</strong>
+                    <span>Filtered lattice image</span>
+                  </div>
+                  <div class="fft-inverse-shell">
+                    <canvas id="inverseFftCanvas" width="320" height="220" aria-label="Inverse FFT filtered lattice preview"></canvas>
+                  </div>
+                  <div class="fft-settings-panel ifft-settings-controls" aria-label="Inverse FFT filter controls">
+                    <div class="fft-settings-head">
+                      <strong>IFFT filter</strong>
+                      <span>Inverse preview</span>
+                    </div>
+                    <label>
+                      <span>Mask radius <b id="ifftMaskRadiusValue">12 px</b></span>
+                      <input id="ifftMaskRadius" type="range" min="3" max="30" step="1" value="12">
+                    </label>
+                    <label>
+                      <span>Mode</span>
+                      <select id="ifftMode">
+                        <option value="pair_plus_dc" selected>Pair + DC</option>
+                        <option value="pair_only">Pair only</option>
+                      </select>
+                    </label>
+                    <button id="applyIfftBtn" type="button" class="btn-secondary compact" disabled>Apply IFFT</button>
+                  </div>
+                </div>
+                <div class="fft-view-block fft-profile-block">
+                  <div class="fft-view-head">
+                    <strong>FFT frequency profile</strong>
+                    <span>Peak frequency -> d-spacing</span>
+                  </div>
+                  <div class="fft-profile-shell">
+                    <canvas id="fftFrequencyProfileCanvas" width="560" height="260" aria-label="FFT frequency intensity profile" title="Drag to pan axes. Wheel zooms X; Shift+wheel or the left axis zooms Y. Double-click resets."></canvas>
+                  </div>
+                </div>
+                <div class="fft-view-block fft-profile-block">
+                  <div class="fft-view-head">
+                    <strong>Inverse FFT profile</strong>
+                    <span><i class="legend-dot auto"></i>Detected peaks <i class="legend-dot span"></i>Drag span</span>
+                  </div>
+                  <div class="fft-profile-shell">
+                    <canvas id="fftProfileCanvas" width="560" height="260" aria-label="Lattice intensity profile" title="Drag to pan axes. Drag yellow endpoints to adjust span. Wheel zooms X; Shift+wheel or the left axis zooms Y. Double-click resets."></canvas>
+                  </div>
+                </div>
+                <div class="fft-metrics">
+                  <div>
+                    <span>ROI</span>
+                    <strong id="fftRoiLabel">No ROI</strong>
+                  </div>
+                  <div>
+                    <span>d-spacing</span>
+                    <strong id="fftSpacingLabel">-</strong>
+                  </div>
+                  <div>
+                    <span>Angle</span>
+                    <strong id="fftAngleLabel">-</strong>
+                  </div>
+                  <div>
+                    <span>Peak source</span>
+                    <strong id="fftPeakLabel">-</strong>
+                  </div>
+                </div>
+              </div>
+              <p class="fft-status" id="fftStatus">Pick one ROI per selected image to start FFT analysis.</p>
+            </article>
+
+            <div class="workbench-detail-grid">
+              <article class="surface-card console-card" id="analysisConsole">
+                <div class="surface-head">
+                  <div>
+                    <h2>Analysis Console</h2>
+                    <p>Recent interaction and analysis events are listed here.</p>
+                  </div>
+                  <button id="clearConsoleBtn" type="button" class="btn-ghost compact">Clear</button>
+                </div>
+                <div class="console-log"></div>
+              </article>
+            </div>
+          </section>
+        </form>
+
+        <footer class="tem-footer">
+          <div><span class="material-symbols-outlined">science</span> Local analyzer active</div>
+          <div><span class="material-symbols-outlined">monitor_heart</span> Overlay preview ready</div>
+          <div><b>Session-safe cumulative export</b> <span class="ok">Active</span></div>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <script src="./histogram_math.js?v=boxed-scale-bar-20260610"></script>
+  <script src="./scale_bar_detection.js?v=boxed-scale-bar-20260610"></script>
+  <script src="./app.js?v=boxed-scale-bar-20260610"></script>
+</body>
+</html>
