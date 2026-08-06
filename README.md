@@ -58,6 +58,9 @@ NC-TEM-Analyzer/
     rectangle_seed_*.py     Rectangle seed demos and local utilities
   tests/
     *.test.mjs              Browser-side unit tests
+  sample_data/
+    spherical_ag2se.jpg     Minimal spherical-particle example
+    README.md               Example settings, workflow, and image attribution
 ```
 
 ## Requirements
@@ -139,15 +142,24 @@ server with `Ctrl+C` when finished.
    measurements, or `Nanoplatelet / Rod` for anisotropic particles.
 4. Tune detection and shape-filtering settings if needed.
 5. Run auto-detection.
-6. Inspect overlays, correct or exclude detections, and review the generated
-   histogram with adjustable binning, zoomable axes, summary statistics, and
-   Gaussian fitting.
-7. Export accumulated measurements as CSV or save the histogram as a
+6. Inspect the detection overlay. Exclude false or incorrectly detected
+   particles, and manually adjust the size or position only for detections that
+   require correction.
+7. Review the updated histogram with adjustable binning, zoomable axes, summary
+   statistics, and Gaussian fitting.
+8. Export accumulated measurements as CSV or save the histogram as a
    transparent PNG.
 
 For FFT analysis, select an image, draw an FFT ROI, run FFT, verify or adjust
 the peak pair, inspect the inverse FFT/profile output, and save/export the FFT
 measurement.
+
+## Sample Dataset
+
+A minimal spherical Ag2Se nanoparticle example is included in `sample_data/`.
+Use `spherical_ag2se.jpg` in `Spherical dot` mode with a `50 nm` black scale
+bar. See [`sample_data/README.md`](sample_data/README.md) for the complete
+workflow, manual-correction guidance, source citation, and permission statement.
 
 ## API Endpoints
 
