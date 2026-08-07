@@ -7,6 +7,7 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage import color, exposure, feature, filters, io, measure, morphology, segmentation
 
+from core.rectangle_geometry import MEASUREMENT_DEFINITION, rotated_rectangle_side_lengths
 from core.scale_bar import detect_scale_bar, scale_bar_exclusion_top
 
 
@@ -65,6 +66,8 @@ class ImageResult:
     scale_bar_box: tuple[float, float, float, float] | None = None  # (x, y, w, h)
     nm_per_pixel: float | None = None
     circle_annotations: list[dict[str, Any]] = field(default_factory=list)
+    rectangle_annotations: list[dict[str, Any]] = field(default_factory=list)
+    measurement_definition: str | None = None
     mode: str = "spherical"
 
 
@@ -221,6 +224,7 @@ class Analyzer:
             short_values_nm=[],
             scale_bar_box=scale_bar_box,
             nm_per_pixel=nm_per_pix,
+            measurement_definition=MEASUREMENT_DEFINITION if mode == "platelet" else None,
             mode=mode,
         )
 
@@ -354,19 +358,41 @@ class Analyzer:
         thresholds: PlateletThresholds,
         scale_bar_box: tuple[float, float, float, float] | None = None,
     ) -> ImageResult:
-        major_axis = np.array([p.major_axis_length for p in props], dtype=float)
-        minor_axis = np.array([p.minor_axis_length for p in props], dtype=float)
+        ellipse_major_axis = np.array([self._ellipse_major_axis(prop) for prop in props], dtype=float)
+        ellipse_minor_axis = np.array([self._ellipse_minor_axis(prop) for prop in props], dtype=float)
         ecc = np.array([p.eccentricity for p in props], dtype=float)
         extent = np.array([p.extent for p in props], dtype=float)
         sol = np.array([p.solidity for p in props], dtype=float)
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            aspect = major_axis / np.clip(minor_axis, 1e-6, None)
+        candidate_polygons: list[list[tuple[float, float]]] = []
+        long_px_values: list[float] = []
+        short_px_values: list[float] = []
+        geometry_valid: list[bool] = []
+        for prop in props:
+            polygon = self._rotated_box_points(prop)
+            try:
+                long_px, short_px = rotated_rectangle_side_lengths(polygon)
+            except ValueError:
+                candidate_polygons.append([])
+                long_px_values.append(float("nan"))
+                short_px_values.append(float("nan"))
+                geometry_valid.append(False)
+                continue
+            candidate_polygons.append(polygon)
+            long_px_values.append(long_px)
+            short_px_values.append(short_px)
+            geometry_valid.append(True)
 
-        long_nm = major_axis * nm_per_pix
-        short_nm = minor_axis * nm_per_pix
+        long_px_array = np.asarray(long_px_values, dtype=float)
+        short_px_array = np.asarray(short_px_values, dtype=float)
+        valid_geometry = np.asarray(geometry_valid, dtype=bool)
+        long_nm = long_px_array * nm_per_pix
+        short_nm = short_px_array * nm_per_pix
+        with np.errstate(divide="ignore", invalid="ignore"):
+            aspect = long_nm / short_nm
         strict_shape = (
-            (long_nm >= thresholds.min_length_nm)
+            valid_geometry
+            & (long_nm >= thresholds.min_length_nm)
             & (long_nm <= thresholds.max_length_nm)
             & (aspect >= thresholds.aspect_min)
             & (ecc >= thresholds.ecc_min)
@@ -374,7 +400,8 @@ class Analyzer:
             & (sol >= thresholds.sol_min)
         )
         relaxed_shape = (
-            (long_nm >= thresholds.min_length_nm)
+            valid_geometry
+            & (long_nm >= thresholds.min_length_nm)
             & (long_nm <= thresholds.max_length_nm)
             & (aspect >= max(1.2, thresholds.aspect_min - 0.3))
             & (ecc >= max(0.3, thresholds.ecc_min - thresholds.small_relax_ecc_delta))
@@ -387,27 +414,48 @@ class Analyzer:
         long_values = long_nm[valid]
         short_values = short_nm[valid]
         if long_values.size == 0:
-            return ImageResult(
-                count=0,
-                mean_nm=None,
-                std_nm=None,
-                values_nm=[],
-                circles=[],
-                boxes=[],
-                short_values_nm=[],
-                scale_bar_box=scale_bar_box,
-                nm_per_pixel=nm_per_pix,
-                mode="platelet",
-            )
+            return self._empty_result("platelet", scale_bar_box, nm_per_pix)
 
         boxes: list[tuple[float, float, float, float]] = []
         rotated_boxes: list[list[tuple[float, float]]] = []
-        for prop, keep in zip(props, valid):
+        rectangle_annotations: list[dict[str, Any]] = []
+        for prop_index, (prop, keep, polygon) in enumerate(zip(props, valid, candidate_polygons)):
             if not keep:
                 continue
             minr, minc, maxr, maxc = prop.bbox
-            boxes.append((float(minc), float(minr), float(maxc - minc), float(maxr - minr)))
-            rotated_boxes.append(self._rotated_box_points(prop))
+            bbox = (float(minc), float(minr), float(maxc - minc), float(maxr - minr))
+            annotation_index = len(rotated_boxes)
+            long_axis_nm = float(long_nm[prop_index])
+            short_axis_nm = float(short_nm[prop_index])
+            aspect_ratio = long_axis_nm / short_axis_nm
+            cy, cx = prop.centroid
+            boxes.append(bbox)
+            rotated_boxes.append(polygon)
+            rectangle_annotations.append(
+                {
+                    "id": f"rect-{annotation_index + 1}",
+                    "index": annotation_index,
+                    "geometry_type": "rotated_rectangle",
+                    "measurement_definition": MEASUREMENT_DEFINITION,
+                    "source": "auto",
+                    "accepted": True,
+                    "length_nm": long_axis_nm,
+                    "width_nm": short_axis_nm,
+                    "long_axis_nm": long_axis_nm,
+                    "short_axis_nm": short_axis_nm,
+                    "aspect": aspect_ratio,
+                    "aspect_ratio": aspect_ratio,
+                    "center_px": [float(cx), float(cy)],
+                    "polygon_px": polygon,
+                    "bbox_px": list(bbox),
+                    "ellipse_major_axis_px": float(ellipse_major_axis[prop_index]),
+                    "ellipse_minor_axis_px": float(ellipse_minor_axis[prop_index]),
+                    "component_area_px": float(prop.area),
+                    "extent": float(prop.extent),
+                    "solidity": float(prop.solidity),
+                    "eccentricity": float(prop.eccentricity),
+                }
+            )
 
         return ImageResult(
             count=int(long_values.size),
@@ -420,8 +468,10 @@ class Analyzer:
             short_std_nm=float(np.std(short_values)),
             short_values_nm=short_values.tolist(),
             rotated_boxes=rotated_boxes,
+            rectangle_annotations=rectangle_annotations,
             scale_bar_box=scale_bar_box,
             nm_per_pixel=nm_per_pix,
+            measurement_definition=MEASUREMENT_DEFINITION,
             mode="platelet",
         )
 
@@ -429,6 +479,16 @@ class Analyzer:
         if hasattr(prop, "equivalent_diameter"):
             return float(prop.equivalent_diameter)
         return float(prop.equivalent_diameter_area)
+
+    def _ellipse_major_axis(self, prop: Any) -> float:
+        if hasattr(prop, "axis_major_length"):
+            return float(prop.axis_major_length)
+        return float(prop.major_axis_length)
+
+    def _ellipse_minor_axis(self, prop: Any) -> float:
+        if hasattr(prop, "axis_minor_length"):
+            return float(prop.axis_minor_length)
+        return float(prop.minor_axis_length)
 
     def _rotated_box_points(self, prop: Any) -> list[tuple[float, float]]:
         # Build an oriented rectangle from principal axes of region coordinates.

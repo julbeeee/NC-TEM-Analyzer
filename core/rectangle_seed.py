@@ -7,6 +7,8 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage import draw, exposure, filters, measure, morphology
 
+from core.rectangle_geometry import rotated_rectangle_side_lengths
+
 
 Point = tuple[float, float]
 
@@ -39,6 +41,8 @@ class RectCandidate:
     extent: float
     solidity: float
     eccentricity: float
+    ellipse_major_axis_px: float
+    ellipse_minor_axis_px: float
     score: float
     threshold: float
     bbox: tuple[int, int, int, int]
@@ -187,10 +191,14 @@ def _candidate_from_prop(
     cfg: SeedDetectorConfig,
     threshold: float,
 ) -> RectCandidate | None:
-    length_px = float(max(_major_axis_length(prop), 1e-6))
-    width_px = float(max(_minor_axis_length(prop), 1.0))
-    if length_px < width_px:
-        length_px, width_px = width_px, length_px
+    polygon = _rotated_box_points(prop)
+    try:
+        length_px, width_px = rotated_rectangle_side_lengths(polygon)
+    except ValueError:
+        return None
+
+    ellipse_major_axis_px = _major_axis_length(prop)
+    ellipse_minor_axis_px = _minor_axis_length(prop)
 
     aspect = length_px / max(width_px, 1e-6)
     area = float(prop.area)
@@ -205,7 +213,6 @@ def _candidate_from_prop(
         return None
 
     score = _shape_score(seed, length_px, width_px, aspect, area, prop.extent, prop.solidity)
-    polygon = _rotated_box_points(prop)
     minr, minc, maxr, maxc = prop.bbox
     cy, cx = prop.centroid
     return RectCandidate(
@@ -220,6 +227,8 @@ def _candidate_from_prop(
         extent=float(prop.extent),
         solidity=float(prop.solidity),
         eccentricity=float(prop.eccentricity),
+        ellipse_major_axis_px=float(ellipse_major_axis_px),
+        ellipse_minor_axis_px=float(ellipse_minor_axis_px),
         score=float(score),
         threshold=threshold,
         bbox=(int(minc), int(minr), int(maxc), int(maxr)),

@@ -108,6 +108,7 @@ const workflowCorrectLabel = document.getElementById("workflowCorrectLabel");
 const workflowExportLabel = document.getElementById("workflowExportLabel");
 const histogramMath = window.HistogramMath;
 const scaleBarDetection = window.ScaleBarDetection;
+const rectangleMeasurement = window.RectangleMeasurement;
 
 const state = {
   files: [],
@@ -1062,13 +1063,18 @@ function analyzePlatelet(gray, width, height, config, scaleBar) {
   const shortValues = [];
   const boxes = [];
   const rotatedBoxes = [];
+  const rectangleAnnotations = [];
 
   components.forEach((component) => {
-    const majorPx = Math.max(component.majorAxis, component.bboxWidth, component.bboxHeight);
-    const minorPx = Math.max(1, Math.min(component.minorAxis, component.bboxWidth, component.bboxHeight));
-    const longNm = majorPx * scaleBar.nmPerPixel;
-    const shortNm = minorPx * scaleBar.nmPerPixel;
-    const aspect = majorPx / minorPx;
+    const polygon = rotatedBox(component);
+    const geometry = rectangleGeometryFromPolygon(polygon);
+    if (!geometry) {
+      return;
+    }
+    const measurement = rectangleMeasurement.canonicalRectangleMeasurement(geometry, scaleBar.nmPerPixel);
+    const longNm = measurement.long_axis_nm;
+    const shortNm = measurement.short_axis_nm;
+    const aspect = measurement.aspect_ratio;
     const valid = longNm >= config.platelet.minLengthNm
       && longNm <= config.platelet.maxLengthNm
       && aspect >= config.platelet.aspectMin
@@ -1079,8 +1085,33 @@ function analyzePlatelet(gray, width, height, config, scaleBar) {
     if (valid) {
       longValues.push(longNm);
       shortValues.push(shortNm);
-      boxes.push([component.minX, component.minY, component.bboxWidth, component.bboxHeight]);
-      rotatedBoxes.push(rotatedBox(component));
+      const bbox = [component.minX, component.minY, component.bboxWidth, component.bboxHeight];
+      const annotationIndex = rotatedBoxes.length;
+      boxes.push(bbox);
+      rotatedBoxes.push(polygon);
+      rectangleAnnotations.push({
+        id: `rect-${annotationIndex + 1}`,
+        index: annotationIndex,
+        geometry_type: "rotated_rectangle",
+        measurement_definition: rectangleMeasurement.MEASUREMENT_DEFINITION,
+        source: "auto",
+        accepted: true,
+        length_nm: longNm,
+        width_nm: shortNm,
+        long_axis_nm: longNm,
+        short_axis_nm: shortNm,
+        aspect,
+        aspect_ratio: aspect,
+        center_px: [component.cx, component.cy],
+        polygon_px: polygon,
+        bbox_px: bbox,
+        ellipse_major_axis_px: component.majorAxis,
+        ellipse_minor_axis_px: component.minorAxis,
+        component_area_px: component.area,
+        extent: component.extent,
+        solidity: component.solidity,
+        eccentricity: component.eccentricity,
+      });
     }
   });
 
@@ -1099,8 +1130,10 @@ function analyzePlatelet(gray, width, height, config, scaleBar) {
     circle_annotations: [],
     boxes,
     rotated_boxes: rotatedBoxes,
+    rectangle_annotations: rectangleAnnotations,
     rectangle_seed_points: [],
     detector_method: "connected_components",
+    measurement_definition: rectangleMeasurement.MEASUREMENT_DEFINITION,
     scale_bar_box: scaleBar.box,
     nm_per_pixel: scaleBar.nmPerPixel,
     error: null,
@@ -1124,11 +1157,13 @@ function analyzePlateletWithRectangleSeed(gray, width, height, config, scaleBar)
 
     const components = connectedComponents(mask, roi.width, roi.height, minArea);
     components.forEach((component) => {
-      let majorPx = Math.max(component.majorAxis, 1e-6);
-      let minorPx = Math.max(component.minorAxis, 1);
-      if (majorPx < minorPx) {
-        [majorPx, minorPx] = [minorPx, majorPx];
+      const polygon = rotatedBox(component);
+      const geometry = rectangleGeometryFromPolygon(polygon);
+      if (!geometry) {
+        return;
       }
+      const majorPx = geometry.length;
+      const minorPx = geometry.width;
       const aspect = majorPx / Math.max(minorPx, 1e-6);
       const valid = component.area >= seed.areaPx * 0.25
         && component.area <= seed.areaPx * 5
@@ -1161,6 +1196,7 @@ function analyzePlateletWithRectangleSeed(gray, width, height, config, scaleBar)
         aspect,
         threshold: level,
         box: [component.minX, component.minY, component.bboxWidth, component.bboxHeight],
+        polygon,
       });
     });
   });
@@ -1173,24 +1209,32 @@ function analyzePlateletWithRectangleSeed(gray, width, height, config, scaleBar)
   const rectangleAnnotations = [];
 
   accepted.forEach((candidate, index) => {
-    const longNm = candidate.majorPx * scaleBar.nmPerPixel;
-    const shortNm = candidate.minorPx * scaleBar.nmPerPixel;
+    const measurement = rectangleMeasurement.canonicalRectangleMeasurement(
+      { length: candidate.majorPx, width: candidate.minorPx },
+      scaleBar.nmPerPixel
+    );
+    const longNm = measurement.long_axis_nm;
+    const shortNm = measurement.short_axis_nm;
     longValues.push(longNm);
     shortValues.push(shortNm);
     boxes.push(candidate.box);
-    const polygon = rotatedBox(candidate.component);
+    const polygon = candidate.polygon;
     rotatedBoxes.push(polygon);
     rectangleAnnotations.push({
       id: `rect-${index + 1}`,
       index,
       geometry_type: "rotated_rectangle",
+      measurement_definition: rectangleMeasurement.MEASUREMENT_DEFINITION,
       source: "rectangle_seed_auto",
       accepted: true,
       score: candidate.score,
       threshold: candidate.threshold,
       length_nm: longNm,
       width_nm: shortNm,
+      long_axis_nm: longNm,
+      short_axis_nm: shortNm,
       aspect: candidate.aspect,
+      aspect_ratio: longNm / shortNm,
       center_px: [candidate.component.cx, candidate.component.cy],
       polygon_px: polygon,
       bbox_px: candidate.box,
@@ -1226,6 +1270,7 @@ function analyzePlateletWithRectangleSeed(gray, width, height, config, scaleBar)
       dark_on_light: seed.darkOnLight,
     },
     detector_method: "rectangle_seed",
+    measurement_definition: rectangleMeasurement.MEASUREMENT_DEFINITION,
     scale_bar_box: scaleBar.box,
     nm_per_pixel: scaleBar.nmPerPixel,
     error: null,
@@ -3195,6 +3240,9 @@ function applyRowExclusionState(row) {
 function normalizeAnalysisRow(row) {
   return applyRowExclusionState({
     ...row,
+    measurement_definition: row?.mode === "platelet"
+      ? rectangleMeasurement.measurementDefinitionForRow(row)
+      : (row?.measurement_definition || null),
     _rawValuesNm: Array.isArray(row.values_nm) ? [...row.values_nm] : [],
     _rawShortValuesNm: Array.isArray(row.short_values_nm) ? [...row.short_values_nm] : [],
     _rawCircles: cloneFlatArray(row.circles),
@@ -3743,11 +3791,16 @@ function ensureRectangleAnnotationBaseline(row, index, geometry) {
   annotation.id = annotation.id || `rect-${index + 1}`;
   annotation.index = index;
   annotation.geometry_type = "rotated_rectangle";
+  annotation.measurement_definition = annotation.measurement_definition
+    || rectangleMeasurement.measurementDefinitionForRow(row);
   annotation.source = annotation.source || "auto";
   annotation.accepted = !rowExcludedSet(row).has(index);
   annotation.length_nm = Number.isFinite(lengthNm) ? lengthNm : geometry.length * nmPerPixel;
   annotation.width_nm = Number.isFinite(widthNm) ? widthNm : geometry.width * nmPerPixel;
-  annotation.aspect = annotation.aspect ?? (geometry.length / Math.max(geometry.width, 1e-6));
+  annotation.long_axis_nm = annotation.length_nm;
+  annotation.short_axis_nm = annotation.width_nm;
+  annotation.aspect = annotation.aspect ?? (annotation.length_nm / Math.max(annotation.width_nm, 1e-6));
+  annotation.aspect_ratio = annotation.aspect;
   annotation.center_px = Array.isArray(annotation.center_px)
     ? annotation.center_px
     : [geometry.centerX, geometry.centerY];
@@ -3779,15 +3832,23 @@ function updateRectangleAnnotation(row, index, geometry, polygon, bbox) {
   }
 
   const nmPerPixel = Number(row.nm_per_pixel) || 0;
-  const lengthNm = geometry.length * nmPerPixel;
-  const widthNm = geometry.width * nmPerPixel;
-  const annotation = { ...(row._rectangleAnnotations[index] || {}) };
+  const measurement = rectangleMeasurement.canonicalRectangleMeasurement(geometry, nmPerPixel);
+  const lengthNm = measurement.long_axis_nm;
+  const widthNm = measurement.short_axis_nm;
+  const existingAnnotation = { ...(row._rectangleAnnotations[index] || {}) };
+  const existingLengthNm = existingAnnotation.long_axis_nm ?? existingAnnotation.length_nm;
+  const existingWidthNm = existingAnnotation.short_axis_nm ?? existingAnnotation.width_nm;
+  const annotation = rectangleMeasurement.rectangleMeasurementUpdate(
+    existingAnnotation,
+    geometry,
+    nmPerPixel
+  );
 
   annotation.id = annotation.id || `rect-${index + 1}`;
   annotation.index = index;
   annotation.geometry_type = "rotated_rectangle";
-  annotation.auto_length_nm = annotation.auto_length_nm ?? annotation.length_nm ?? lengthNm;
-  annotation.auto_width_nm = annotation.auto_width_nm ?? annotation.width_nm ?? widthNm;
+  annotation.auto_length_nm = annotation.auto_length_nm ?? existingLengthNm ?? lengthNm;
+  annotation.auto_width_nm = annotation.auto_width_nm ?? existingWidthNm ?? widthNm;
   annotation.auto_center_px = Array.isArray(annotation.auto_center_px)
     ? annotation.auto_center_px
     : (Array.isArray(annotation.center_px) ? [...annotation.center_px] : [geometry.centerX, geometry.centerY]);
@@ -3798,9 +3859,6 @@ function updateRectangleAnnotation(row, index, geometry, polygon, bbox) {
     ? [...annotation.auto_bbox_px]
     : (Array.isArray(annotation.bbox_px) ? [...annotation.bbox_px] : [...bbox]);
   annotation.auto_angle_deg = annotation.auto_angle_deg ?? rectangleAngleDeg(geometry);
-  annotation.length_nm = lengthNm;
-  annotation.width_nm = widthNm;
-  annotation.aspect = geometry.length / Math.max(geometry.width, 1e-6);
   annotation.center_px = [geometry.centerX, geometry.centerY];
   annotation.polygon_px = clonePolygon(polygon);
   annotation.bbox_px = [...bbox];
@@ -3846,11 +3904,13 @@ function applyRectangleGeometry(row, index, geometry) {
   const polygon = polygonFromRectangleGeometry(geometry);
   const bbox = boxFromPolygon(polygon);
   const nmPerPixel = Number(row.nm_per_pixel) || 0;
+  const measurement = rectangleMeasurement.canonicalRectangleMeasurement(geometry, nmPerPixel);
 
   row._rawRotatedBoxes[index] = polygon;
   row._rawBoxes[index] = bbox;
-  row._rawValuesNm[index] = geometry.length * nmPerPixel;
-  row._rawShortValuesNm[index] = geometry.width * nmPerPixel;
+  row._rawValuesNm[index] = measurement.long_axis_nm;
+  row._rawShortValuesNm[index] = measurement.short_axis_nm;
+  row.measurement_definition = measurement.measurement_definition;
   updateRectangleAnnotation(row, index, geometry, polygon, bbox);
   applyRowExclusionState(row);
   return true;
@@ -4814,29 +4874,7 @@ function renderHistogram(options = {}) {
 }
 
 function acceptedMeasurementExportRows() {
-  const rows = [];
-  state.historyRows.forEach((row) => {
-    if (!row || row.error || !Array.isArray(row.values_nm)) {
-      return;
-    }
-    const mode = row.mode || "";
-    row.values_nm.forEach((value, index) => {
-      const numericValue = Number(value);
-      if (!Number.isFinite(numericValue)) {
-        return;
-      }
-      const shortValue = Number(row.short_values_nm?.[index]);
-      rows.push({
-        sourceName: row.name || "",
-        mode,
-        index: index + 1,
-        diameterNm: mode === "platelet" ? "" : numericValue,
-        longAxisNm: mode === "platelet" ? numericValue : "",
-        shortAxisNm: mode === "platelet" && Number.isFinite(shortValue) ? shortValue : "",
-      });
-    });
-  });
-  return rows;
+  return rectangleMeasurement.acceptedMeasurementExportRows(state.historyRows);
 }
 
 function csvCell(value) {

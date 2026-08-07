@@ -1,11 +1,14 @@
 # NC-TEM Analyzer
 
+Current release: **v1.0.1**
+
 NC-TEM Analyzer is a localhost-based web application for measuring
 nanoparticles, nanocrystals, quantum dots, nanoplatelets, rods, and lattice
 spacing from transmission electron microscopy (TEM) images. It combines a
 Python/Flask image-analysis backend with a browser workspace for batch upload,
-threshold tuning, overlay review, intuitive histogram generation with Gaussian
-fitting, CSV export, FFT ROI analysis, and inverse FFT inspection.
+threshold tuning, overlay review, intuitive histogram generation with a
+mean/SD-based normal-distribution guide, CSV export, FFT ROI analysis, and
+inverse FFT inspection.
 
 The main way to use the software is to start the Flask server on your own
 computer and open the analyzer at `http://127.0.0.1:8000` or
@@ -26,8 +29,10 @@ computer and open the analyzer at `http://127.0.0.1:8000` or
 - Interactive overlay preview for accepted detections, manual dot correction,
   exclusion/restoration, zoom, and session-level review.
 - Accumulated long-axis, short-axis, and diameter histograms with intuitive
-  bin-size control, zoomable axes, visible mean/std summaries, Gaussian fitting,
-  transparent PNG export, and CSV export.
+  bin-size control, zoomable axes, visible mean/std summaries, a
+  normal-distribution overlay calculated from the visible measurements as a
+  visual guide rather than a fit to binned counts, transparent PNG export, and
+  CSV export.
 - FFT ROI workflow for lattice analysis, automatic/manual peak-pair selection,
   d-spacing measurement, inverse FFT preview, profile inspection, and FFT CSV
   export.
@@ -43,6 +48,7 @@ NC-TEM-Analyzer/
     analyzer.py             Scale-bar, spherical, and platelet measurement logic
     fft_analyzer.py         FFT, IFFT, d-spacing, and profile analysis
     rectangle_seed.py       Seed-assisted rectangular particle detection
+    rectangle_geometry.py   Canonical rotated-rectangle side measurement
     scale_bar.py            Scale-bar candidate detection helpers
     io_utils.py             CSV helper
     session.py              Session measurement state
@@ -50,14 +56,16 @@ NC-TEM-Analyzer/
     tem.html                Browser UI
     styles.css              UI styling
     app.js                  Browser-side workflow, canvas, storage, and export logic
-    histogram_math.js       Histogram statistics, binning, and Gaussian fitting
+    histogram_math.js       Histogram statistics, binning, and normal-distribution guides
     scale_bar_detection.js  Browser-side scale-bar selection helpers
+    rectangle_measurement.js Browser-side NPL measurement/export helpers
   local_tests/
     analyzer_smoke.py       Spherical measurement smoke test
     fft_analyzer_smoke.py   FFT/IFFT smoke test
     rectangle_seed_*.py     Rectangle seed demos and local utilities
   tests/
     *.test.mjs              Browser-side unit tests
+    test_npl_measurement.py  Python NPL geometry/integration tests
   sample_data/
     spherical_ag2se.jpg     Minimal spherical-particle example
     README.md               Example settings, workflow, and image attribution
@@ -146,13 +154,29 @@ server with `Ctrl+C` when finished.
    particles, and manually adjust the size or position only for detections that
    require correction.
 7. Review the updated histogram with adjustable binning, zoomable axes, summary
-   statistics, and Gaussian fitting.
+   statistics, and a mean/SD-based normal-distribution guide.
 8. Export accumulated measurements as CSV or save the histogram as a
    transparent PNG.
 
 For FFT analysis, select an image, draw an FFT ROI, run FFT, verify or adjust
 the peak pair, inspect the inverse FFT/profile output, and save/export the FFT
 measurement.
+
+## NPL Measurement Definition
+
+For nanoplatelets, rods, and other anisotropic particles, `long_axis_nm` and
+`short_axis_nm` are the long and short side lengths of the rotated rectangle
+displayed in the overlay, multiplied by `nm_per_pixel`. The aspect ratio is
+`long_axis_nm / short_axis_nm`. The same definition is used for general
+automatic detection, rectangle-seed detection, manual correction, summary
+statistics, histograms, and CSV export.
+
+Equivalent-ellipse major/minor axes may be retained internally as shape
+descriptors, but they are not reported as physical NPL length or width. New NPL
+analysis results include
+`measurement_definition: "rotated_rectangle_side_length"`; results without
+this field should be treated as legacy or unknown and are not automatically
+converted.
 
 ## Sample Dataset
 
@@ -178,11 +202,13 @@ The Flask backend exposes the following local endpoints:
 ## Local Tests
 
 The repository includes lightweight smoke tests and unit tests for core
-histogram, Gaussian fitting, FFT, and scale-bar detection utilities.
+histogram statistics, normal-distribution guide generation, FFT, and scale-bar
+detection utilities.
 
 Run the included smoke tests from the repository root:
 
 ```bash
+python tests/test_npl_measurement.py
 python local_tests/analyzer_smoke.py
 python local_tests/fft_analyzer_smoke.py
 node --test tests/*.test.mjs
@@ -198,6 +224,7 @@ python local_tests/rectangle_seed_image.py path/to/image.png --point 10,20 --poi
 
 | Field | Value |
 | --- | --- |
+| Current code version | v1.0.1 |
 | Code versioning system | Git |
 | Software languages, tools, and services | Python, JavaScript, HTML, CSS, Flask, NumPy, SciPy, scikit-image, Pillow/PIL, Werkzeug, browser Canvas/Fetch/IndexedDB APIs, Google Fonts / Material Symbols |
 | Compilation requirements, operating environments, and dependencies | No compilation or frontend build step required. Runs as a local Python/Flask web application on Windows, macOS, or Linux with Python 3.10 or later. Required Python packages include Flask, NumPy, SciPy, scikit-image, Pillow, and Werkzeug. |

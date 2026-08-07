@@ -27,6 +27,7 @@ from core.fft_analyzer import (
     apply_ifft_roi_settings,
     measure_profile_peak_pair,
 )
+from core.rectangle_geometry import MEASUREMENT_DEFINITION
 from core.rectangle_seed import SeedDetectorConfig, build_seed_from_points, detect_rectangles_with_seed
 from core.scale_bar import scale_bar_exclusion_top
 
@@ -282,7 +283,8 @@ def _image_result_payload(
         "rotated_boxes": result.rotated_boxes,
         "rectangle_seed_points": [],
         "rectangle_seed_summary": None,
-        "rectangle_annotations": [],
+        "rectangle_annotations": result.rectangle_annotations,
+        "measurement_definition": result.measurement_definition,
         "detector_method": detector_method,
         "scale_bar_box": result.scale_bar_box,
         "nm_per_pixel": result.nm_per_pixel,
@@ -341,13 +343,17 @@ def _rectangle_seed_payload(
             "id": f"rect-{index + 1}",
             "index": index,
             "geometry_type": "rotated_rectangle",
+            "measurement_definition": MEASUREMENT_DEFINITION,
             "source": "rectangle_seed_auto",
             "accepted": True,
             "score": candidate.score,
             "threshold": candidate.threshold,
             "length_nm": candidate.length_nm,
             "width_nm": candidate.width_nm,
+            "long_axis_nm": candidate.length_nm,
+            "short_axis_nm": candidate.width_nm,
             "aspect": candidate.aspect,
+            "aspect_ratio": candidate.aspect,
             "center_px": candidate.center,
             "polygon_px": candidate.polygon,
             "bbox_px": boxes[index],
@@ -355,6 +361,8 @@ def _rectangle_seed_payload(
             "extent": candidate.extent,
             "solidity": candidate.solidity,
             "eccentricity": candidate.eccentricity,
+            "ellipse_major_axis_px": candidate.ellipse_major_axis_px,
+            "ellipse_minor_axis_px": candidate.ellipse_minor_axis_px,
         }
         for index, candidate in enumerate(candidates)
     ]
@@ -382,6 +390,7 @@ def _rectangle_seed_payload(
             "dark_on_light": seed.dark_on_light,
         },
         "rectangle_annotations": annotations,
+        "measurement_definition": MEASUREMENT_DEFINITION,
         "detector_method": "rectangle_seed",
         "scale_bar_box": scale_bar_box,
         "nm_per_pixel": nm_per_pixel,
@@ -472,6 +481,7 @@ def analyze() -> Response:
                         "rectangle_seed_points": [],
                         "rectangle_seed_summary": None,
                         "rectangle_annotations": [],
+                        "measurement_definition": MEASUREMENT_DEFINITION if target_shape == "platelet" else None,
                         "detector_method": None,
                         "scale_bar_box": None,
                         "nm_per_pixel": None,
